@@ -2,7 +2,6 @@ import csv, os
 from datetime import datetime
 import time
 import os.path
-import collections
 from collections import Counter
 
 
