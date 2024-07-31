@@ -1,8 +1,10 @@
 import csv, os
 from datetime import datetime
-import time
 import os.path
 from collections import Counter
+import random
+
+date_logged_in = None
 
 
 class User:
@@ -14,11 +16,11 @@ class User:
         self.is_admin = is_admin
 
 
-class Worktime_log:
-    def __init__(self, id, date_logget_in, date_logget_out, session_time):
+class WorktimeLog:
+    def __init__(self, id, date_logged_in, date_logged_out, session_time):
         self.id = id
-        self.date_logget_in = date_logget_in
-        self.date_logget_out = date_logget_out
+        self.date_logged_in = date_logged_in
+        self.date_logged_out = date_logged_out
         self.session_time = session_time
 
 
@@ -91,86 +93,79 @@ class CsvHelper:
         os.remove(self.file_path)
 
 
-def is_id_unique(id, users):
+def generate_user_id(users):
+    id = str(random.randint(1, 10))
     users_list = users.read()
     for user in users_list:
         if user.id == id:
-            return False
+            generate_user_id(users)
 
-    return True
+    return id
 
 
 def get_info_for_new_user(users):
-    id = input("Iveskite id: ")
+    id = generate_user_id(users)
+    name = input("Iveskite prisijungimo varda: ")
+    password = input("Iveskite prisijungimo slaptazodi: ")
+    age = int(input("Iveskite amziu: "))
+    is_admin = input("Ar tures admino teises True / False: ")
 
-    if is_id_unique(id, users):
-        name = input("Iveskite prisijungimo varda: ")
-        password = input("Iveskite prisijungimo slaptazodi: ")
-        age = input("Iveskite amziu: ")
-        is_admin = input("Ar tures admino teises True / False: ")
-
-        return {"id": id, "name": name, "password": password, "age": age, "is_admin": is_admin}
-
-    else:
-        print("Toks ID jau egzistuoja. Bandykite dar kartą.")
-        get_info_for_new_user(users)
+    return {"id": id, "name": name, "password": password, "age": age, "is_admin": is_admin}
 
 
 def add_user():
-    user_obj = CsvHelper("users.csv", data_class="User", dtypes={"age": "int", "is_admin": "bool"})
-    user_data = get_info_for_new_user(user_obj)
+    user_file_obj = CsvHelper("users.csv", data_class="User", dtypes={"age": "int", "is_admin": "bool"})
+    user_data = get_info_for_new_user(user_file_obj)
     user = User(**user_data)
-    users_list = user_obj.read()
+    users_list = user_file_obj.read()
     users_list.append(user)
-    user_obj.save(users_list)
+    user_file_obj.save(users_list)
     print("Darbuotojas sukurtas")
 
-    return admin_menu()
 
-
-def get_user_id(user_name, user_password):
-    user_obj = CsvHelper("users.csv", data_class="User", dtypes={"age": "int", "is_admin": "bool"})
-    users_list = user_obj.read()
+def find_user(user_name, user_password):
+    user_file_obj = CsvHelper("users.csv", data_class="User", dtypes={"age": "int", "is_admin": "bool"})
+    users_list = user_file_obj.read()
     for user in users_list:
         if user.name == user_name and user.password == user_password:
             return ({"user_id": user.id, "is_admin": user.is_admin})
-    print("Tokio vartotojo nera!!!")
-
-    return log_in()
 
 
-def worker_sales_menu(user_id, date_logget_in):
+def worker_sales_menu(user_id):
     product_name = input("Iveskite produkto pavadinima: ")
     amount = input("Iveskite produkto kaina: ")
+    sale_file_obj = CsvHelper("sales.csv", data_class="Sales")
     sale = Sales(user_id, product_name, amount)
-    sale_obj = CsvHelper("sales.csv", data_class="Sales")
-    sale = Sales(user_id, product_name, amount)
-    sales_list = sale_obj.read()
+    sales_list = sale_file_obj.read()
     sales_list.append(sale)
-    sale_obj.save(sales_list)
+    sale_file_obj.save(sales_list)
     print("Pardavimas ivestas")
 
-    return worker_menu(user_id, date_logget_in)
-    d = a + 2
 
-def worker_menu(user_id, date_logget_in):
+def worker_menu(user_id):
     worker_choice = input("Darbuotojo menu\n1.Ivesti pardavima: \n2.Atsijungti:\n: ")
     if worker_choice == "1":
-        worker_sales_menu(user_id, date_logget_in)
+        worker_sales_menu(user_id)
+        worker_menu(user_id)
     elif worker_choice == "2":
-        date_logget_out = datetime.now()
-        session_time = date_logget_out - date_logget_in
-        session_time = session_time.total_seconds()
-        worktime_obj = CsvHelper("worktime_log.csv", data_class="Worktime_log")
-        worktime = Worktime_log(user_id, date_logget_in, date_logget_out, session_time)
-        worktime_list = worktime_obj.read()
-        worktime_list.append(worktime)
-        worktime_obj.save(worktime_list)
-
-        return log_in()
+        worker_log_out(user_id)
 
 
-def get_workers_by_work_time():
+def worker_log_out(user_id):
+    global date_logged_in
+
+    date_logged_out = datetime.now()
+    session_time = date_logged_out - date_logged_in
+    session_time = session_time.total_seconds()
+
+    worktime_file_obj = CsvHelper("worktime_log.csv", data_class="WorktimeLog")
+    worktime = WorktimeLog(user_id, date_logged_in, date_logged_out, session_time)
+    worktime_list = worktime_file_obj.read()
+    worktime_list.append(worktime)
+    worktime_file_obj.save(worktime_list)
+
+
+def print_workers_by_work_time():
     user_dict = CsvHelper("users.csv", dtypes={"is_admin": "bool"})
     users_list = user_dict.read()
 
@@ -187,10 +182,8 @@ def get_workers_by_work_time():
             if session_time["id"] == user["id"]:
                 print(f"{user["name"]} - darbo laikas: {session_time["session_time"]}")
 
-    return admin_menu()
 
-
-def get_workers_by_sales():
+def print_workers_by_sales():
     user_dict = CsvHelper("users.csv", dtypes={"is_admin": "bool"})
     users_list = user_dict.read()
 
@@ -207,38 +200,38 @@ def get_workers_by_sales():
             if sale["id"] == user["id"]:
                 print(f"{user["name"]} - pardavimu suma: {sale["amount"]}")
 
-    return admin_menu()
 
-
-def get_sold_products_list():
+def print_sold_products_list():
     sales_dict = CsvHelper("sales.csv", dtypes={"amount": "float"})
     sales_list = sales_dict.read()
     sold_products = []
+    print("Pardutu produktu sarasas:")
     for sale in sales_list:
-        sold_products.append(sale["product_name"])
-    print(sold_products)
-
-    return admin_menu()
+        print(sale["product_name"])
 
 
 def admin_menu():
     admin_choice = input(
         "Administratoriaus menu \n""Pasirinkite: \n1.Sukurti vartotoja\n2.Geriausi darbuotojai pagal isdirbta laika\n"
         "3.Geriausi darbuotojai pagal pardavimus\n4.Visu parduotu produktu sarsas"
-        "\n5.Atsijungtiu\n: ")
+        "\n5.Atsijungti\n: ")
     if admin_choice == "1":
         add_user()
     elif admin_choice == "2":
-        get_workers_by_work_time()
+        print_workers_by_work_time()
     elif admin_choice == "3":
-        get_workers_by_sales()
+        print_workers_by_sales()
     elif admin_choice == "4":
-        get_sold_products_list()
+        print_sold_products_list()
     elif admin_choice == "5":
         log_in()
 
+    admin_menu()
+
 
 def log_in():
+    global date_logged_in
+
     path = 'users.csv'
     check_file = os.path.isfile(path)
     if not check_file:
@@ -248,12 +241,18 @@ def log_in():
     else:
         user_name = input("Iveskite prisijungimo varda: ")
         user_password = input("Iveskite prisijungimo slaptazodi: ")
-        user_id = get_user_id(user_name, user_password)
-        if not bool(user_id["is_admin"]):
-            date_logget_in = datetime.now()
-            worker_menu(user_id["user_id"], date_logget_in)
+        user = find_user(user_name, user_password)
+        if user:
+            if not bool(user["is_admin"]):
+                date_logged_in = datetime.now()
+                worker_menu(user["user_id"])
+                log_in()
+            else:
+                admin_menu()
+
         else:
-            admin_menu()
+            print("Tokio vartotojo nera!!!")
+            log_in()
 
 
 def main():
